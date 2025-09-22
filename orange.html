@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShopeeFood Driver Tools</title>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #fffaf5;
+      display: flex;
+    }
+    .content {
+      margin: auto;
+      padding: 20px;
+      width: 100%;
+      max-width: 520px;
+    }
+    .card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    h2 {
+      text-align: center;
+      color: #ff6600;
+      margin-top: 0;
+    }
+    label {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0 14px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    button {
+      width: 100%;
+      background: #ff6600;
+      border: none;
+      padding: 12px;
+      color: #fff;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .info {
+      text-align: center;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+    .jumlah {
+      color: #ff6600;
+      font-size: 20px;
+    }
+    .tarif-total {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 18px;
+      color: #ff3300;
+    }
+    #map {
+      margin-top: 15px;
+      width: 100%;
+      height: 250px;
+      border-radius: 12px;
+      background: #fff3e6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .riwayat {
+      margin-top: 20px;
+    }
+    .riwayat h3 {
+      margin-bottom: 10px;
+      color: #ff6600;
+    }
+    .riwayat-item {
+      background: #fff7f2;
+      border: 1px solid #ffd9b3;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .riwayat-item button {
+      margin-top: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      background: #ff3300;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    #jam-digital {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: #ff6600;
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-family: monospace;
+      z-index: 9999;
+    }
+  </style>
+</head>
+<body>
+  <div class="content">
+    <div id="jam-digital"></div>
+    <div class="card">
+      <h2> Driver Oren </h2>
+
+      <form onsubmit="cekDuplikat(event)">
+        <label>Nomor HP Customer:</label>
+        <input type="tel" id="nomor" required oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+
+        <label>Nama (opsional):</label>
+        <input type="text" id="nama" />
+
+        <label>Jenis Pesan:</label>
+        <select id="jenis" required onchange="toggleCustom()">
+          <option value="tanya">Tanya Titik</option>
+          <option value="info">Info Sudah Sampai</option>
+          <option value="custom">Pesan Custom</option>
+        </select>
+
+        <div id="customBox" style="display:none;">
+          <label>Pesan Custom:</label>
+          <textarea id="custom_pesan" rows="3"></textarea>
+        </div>
+
+        <label>Tarif (Rp):</label>
+        <input type="number" id="tarif" required />
+
+        <input type="hidden" id="latitude" />
+        <input type="hidden" id="longitude" />
+
+        <button type="submit">Kirim ke WhatsApp</button>
+      </form>
+
+      <div class="info">
+        Total order: <span class="jumlah" id="jml_order">0</span>
+      </div>
+      <div class="tarif-total">
+        Total Tarif: Rp<span id="total_tarif">0</span>
+      </div>
+
+      <div id="map">Menunggu izin lokasi…</div>
+
+      <div class="riwayat">
+        <h3>Riwayat Order</h3>
+        <label>Filter Tanggal:</label>
+        <input type="date" id="filterTanggal" onchange="renderRiwayat()" />
+        <div id="riwayatList"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // toggle pesan custom
+    function toggleCustom() {
+      let jenis = document.getElementById("jenis").value;
+      document.getElementById("customBox").style.display =
+        (jenis === "custom") ? "block" : "none";
+    }
+
+    // normalisasi nomor
+    function rapikan_nomor(nomor) {
+      nomor = nomor.replace(/[^0-9]/g, '');
+      if (nomor.startsWith("0")) nomor = "62" + nomor.substring(1);
+      if (!nomor.startsWith("62")) nomor = "62" + nomor;
+      return nomor;
+    }
+
+    // sensor nomor (tampilkan 4 digit awal saja)
+    function sensorNomor(nomor) {
+      return nomor.substring(0, 4) + "****";
+    }
+
+    // sensor nama (tampilkan 2 huruf awal saja)
+    function sensorNama(nama) {
+      if (!nama) return "#";
+      let bersih = nama.trim().split(" ")[0]; // ambil kata pertama saja
+      if (bersih.length <= 2) return bersih;
+      return bersih.substring(0, 2) + "**";
+    }
+
+    // cek nomor duplikat global
+    function cekDuplikat(e) {
+      e.preventDefault();
+      let nomor = rapikan_nomor(document.getElementById("nomor").value);
+
+      let riwayat = JSON.parse(localStorage.getItem("riwayat")) || [];
+      let duplikat = riwayat.find(r => r.nomor === nomor);
+
+      if (duplikat) {
+        Swal.fire({
+          title: "Nomor sudah pernah diinput",
+          text: "Tetap kirim pesan ke WhatsApp?",
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonText: "Lanjut",
+          cancelButtonText: "Batal"
+        }).then(result => {
+          if (result.isConfirmed) kirimWA();
+        });
+      } else {
+        kirimWA();
+      }
+    }
+
+    // kirim ke WhatsApp + simpan riwayat
+    function kirimWA() {
+      let nomor = rapikan_nomor(document.getElementById("nomor").value);
+      let nama = document.getElementById("nama").value || "#";
+      let jenis = document.getElementById("jenis").value;
+      let custom = document.getElementById("custom_pesan").value;
+      let tarif = document.getElementById("tarif").value;
+      let latitude = document.getElementById("latitude").value;
+      let longitude = document.getElementById("longitude").value;
+
+      let pesan = "";
+      if (jenis === "tanya") {
+        pesan = `Permisi kak ${nama}, saya dari ShopeeFood. Apakah titik pengantaran sudah sesuai aplikasi?`;
+      } else if (jenis === "info") {
+        pesan = `Permisi kak ${nama}, saya dari ShopeeFood. Saya sudah sampai di titik pengantaran.\n\nKlik lokasi: https://www.google.com/maps?q=${latitude},${longitude}`;
+      } else {
+        pesan = custom;
+      }
+
+      let rawPhone = nomor;
+      let phone = rawPhone.replace(/\D/g, '');
+      if (phone.startsWith('0')) phone = phone.substring(1);
+      if (phone.startsWith('62')) phone = phone.substring(2);
+
+      let encodedMsg = encodeURIComponent(pesan);
+      let waBusinessUrl = "whatsapp-business://send?phone=62" + phone + "&text=" + encodedMsg;
+      let fallbackUrl = "https://api.whatsapp.com/send?phone=62" + phone + "&text=" + encodedMsg;
+
+      window.location.href = waBusinessUrl;
+      setTimeout(function() {
+        window.location.href = fallbackUrl;
+      }, 1000);
+
+      // simpan riwayat
+      let order = {
+        nomor: nomor,
+        nama: nama,
+        tarif: tarif,
+        latitude: latitude,
+        longitude: longitude,
+        waktu: new Date().toLocaleTimeString('id-ID', { hour12: false }),
+        tanggal: new Date().toISOString().split("T")[0]
+      };
+
+      let riwayat = JSON.parse(localStorage.getItem("riwayat")) || [];
+      riwayat.unshift(order);
+      localStorage.setItem("riwayat", JSON.stringify(riwayat));
+
+      renderRiwayat();
+    }
+
+    // hapus item riwayat
+    function hapusRiwayat(index) {
+      let riwayat = JSON.parse(localStorage.getItem("riwayat")) || [];
+      riwayat.splice(index, 1);
+      localStorage.setItem("riwayat", JSON.stringify(riwayat));
+      renderRiwayat();
+    }
+
+    // buka WA Business dari riwayat
+    function openWAFromRiwayat(nomor, nama) {
+      let phone = nomor.replace(/\D/g, '');
+      if (phone.startsWith('0')) phone = phone.substring(1);
+      if (phone.startsWith('62')) phone = phone.substring(2);
+
+      let msg = encodeURIComponent(`Halo, permisi kak ${nama}`);
+      let waBusinessUrl = "whatsapp-business://send?phone=62" + phone + "&text=" + msg;
+      let fallbackUrl   = "https://api.whatsapp.com/send?phone=62" + phone + "&text=" + msg;
+
+      window.location.href = waBusinessUrl;
+      setTimeout(() => { window.location.href = fallbackUrl; }, 1000);
+    }
+
+    // render daftar riwayat
+    function renderRiwayat() {
+      let riwayat = JSON.parse(localStorage.getItem("riwayat")) || [];
+      let list = document.getElementById("riwayatList");
+      list.innerHTML = "";
+
+      let filter = document.getElementById("filterTanggal").value;
+      let filtered = riwayat.filter(r => !filter || r.tanggal === filter);
+      let tampil = filter ? filtered : filtered.slice(0, 15);
+
+      let totalTarif = 0;
+      tampil.forEach((r, i) => {
+        totalTarif += Number(r.tarif);
+
+        let nomorTampil = sensorNomor(r.nomor);
+        let namaTampil = sensorNama(r.nama);
+
+        let div = document.createElement("div");
+        div.className = "riwayat-item";
+        div.innerHTML = `
+          ${i+1}.  <a href="javascript:void(0)" onclick="openWAFromRiwayat('${r.nomor}','${r.nama}')">${nomorTampil}</a> - ${namaTampil}
+          <div> Rp${Number(r.tarif).toLocaleString("id-ID")}</div>
+          <div> ${r.tanggal}  ${r.waktu}</div>
+          <div> <a href="https://www.google.com/maps?q=${r.latitude},${r.longitude}" target="_blank">Lihat Lokasi</a></div>
+          <button onclick="hapusRiwayat(${i})">Hapus</button>
+        `;
+        list.appendChild(div);
+      });
+
+      document.getElementById("jml_order").innerText = filtered.length;
+      document.getElementById("total_tarif").innerText = totalTarif.toLocaleString("id-ID");
+    }
+
+    // ambil lokasi otomatis
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        document.getElementById('latitude').value = pos.coords.latitude;
+        document.getElementById('longitude').value = pos.coords.longitude;
+        document.getElementById('map').innerHTML =
+          `<iframe width='100%' height='250' style='border:0;border-radius:12px;' 
+            loading='lazy' allowfullscreen 
+            src='https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}&hl=id&z=15&output=embed'></iframe>`;
+      }, err => {
+        document.getElementById('map').textContent = "Gagal ambil lokasi: " + err.message;
+      });
+    }
+
+    // jam digital
+    function updateJam() {
+      let now = new Date();
+      document.getElementById("jam-digital").innerText =
+        now.toLocaleTimeString('id-ID', { hour12: false });
+    }
+    setInterval(updateJam, 1000);
+    updateJam();
+
+    // render awal
+    renderRiwayat();
+  </script>
+</body>
+</html>
